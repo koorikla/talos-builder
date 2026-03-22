@@ -1,0 +1,56 @@
+From 6daf4aac18c386490eae51f6f96f317bbfe83df4 Mon Sep 17 00:00:00 2001
+From: patch-author <patch@local>
+Date: Sun, 22 Mar 2026 13:30:19 +0200
+Subject: [PATCH] arm64: enable brcmfmac WiFi for Raspberry Pi 5
+
+---
+ kernel/build/config-arm64 | 17 ++++++++++++++---
+ 1 file changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/kernel/build/config-arm64 b/kernel/build/config-arm64
+index fc71805..2cb6d0b 100644
+--- a/kernel/build/config-arm64
++++ b/kernel/build/config-arm64
+@@ -1886,13 +1886,13 @@ CONFIG_STREAM_PARSER=y
+ # CONFIG_MCTP is not set
+ CONFIG_FIB_RULES=y
+ CONFIG_WIRELESS=y
+-# CONFIG_CFG80211 is not set
++CONFIG_CFG80211=y
+ 
+ #
+ # CFG80211 needs to be enabled for MAC80211
+ #
+ CONFIG_MAC80211_STA_HASH_MAX_SIZE=0
+-# CONFIG_RFKILL is not set
++CONFIG_RFKILL=y
+ # CONFIG_NET_9P is not set
+ # CONFIG_CAIF is not set
+ CONFIG_CEPH_LIB=y
+@@ -3407,7 +3407,7 @@ CONFIG_USB_VL600=m
+ CONFIG_USB_NET_CH9200=m
+ CONFIG_USB_NET_AQC111=m
+ CONFIG_USB_RTL8153_ECM=m
+-# CONFIG_WLAN is not set
++CONFIG_WLAN=y
+ # CONFIG_WAN is not set
+ 
+ #
+@@ -10677,3 +10677,14 @@ CONFIG_ARCH_USE_MEMTEST=y
+ # end of Kernel hacking
+ 
+ CONFIG_IO_URING_ZCRX=y
++CONFIG_CFG80211_WEXT=y
++CONFIG_MAC80211=m
++CONFIG_MAC80211_MESH=n
++CONFIG_RFKILL_INPUT=y
++CONFIG_BRCMUTIL=m
++CONFIG_BRCMFMAC=m
++CONFIG_BRCMFMAC_SDIO=y
++CONFIG_BRCMFMAC_PROTO_BCDC=y
++CONFIG_BRCMFMAC_PROTO_MSGBUF=y
++CONFIG_BRCMFMAC_PCIE=n
++CONFIG_BRCMFMAC_USB=n
+-- 
+2.50.1 (Apple Git-155)
+

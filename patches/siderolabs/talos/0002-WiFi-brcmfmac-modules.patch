@@ -1,0 +1,26 @@
+From c65d835128680c928452d517f2c7a72ec52fc1f5 Mon Sep 17 00:00:00 2001
+From: patch-author <patch@local>
+Date: Sun, 22 Mar 2026 13:30:41 +0200
+Subject: [PATCH] arm64: add brcmfmac and mac80211 modules for RPi5 WiFi
+
+---
+ hack/modules-arm64.txt | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/hack/modules-arm64.txt b/hack/modules-arm64.txt
+index 95c3ee669..db4f74275 100644
+--- a/hack/modules-arm64.txt
++++ b/hack/modules-arm64.txt
+@@ -117,6 +117,9 @@ kernel/drivers/net/usb/lg-vl600.ko
+ kernel/drivers/net/usb/int51x1.ko
+ kernel/drivers/net/usb/cdc_ncm.ko
+ kernel/drivers/net/usb/cdc_ether.ko
++kernel/drivers/net/wireless/broadcom/brcm80211/brcmfmac/brcmfmac.ko
++kernel/drivers/net/wireless/broadcom/brcm80211/brcmutil/brcmutil.ko
++kernel/net/mac80211/mac80211.ko
+ kernel/drivers/net/vrf.ko
+ kernel/drivers/irqchip/irq-imx-mu-msi.ko
+ kernel/drivers/input/misc/uinput.ko
+-- 
+2.50.1 (Apple Git-155)
+
