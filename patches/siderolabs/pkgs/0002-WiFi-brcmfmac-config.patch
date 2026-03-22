@@ -1,6 +1,6 @@
-From e28f6286400e511cae7804ebfc0cf4bdb8f63e51 Mon Sep 17 00:00:00 2001
+From be79b4958987c0b548270749e96497f4f81945ca Mon Sep 17 00:00:00 2001
 From: patch-author <patch@local>
-Date: Sun, 22 Mar 2026 13:57:30 +0200
+Date: Sun, 22 Mar 2026 14:03:15 +0200
 Subject: [PATCH] arm64: enable brcmfmac WiFi for Raspberry Pi 5
 
 ---
@@ -8,7 +8,7 @@ Subject: [PATCH] arm64: enable brcmfmac WiFi for Raspberry Pi 5
  1 file changed, 14 insertions(+), 3 deletions(-)
 
 diff --git a/kernel/build/config-arm64 b/kernel/build/config-arm64
-index e50b9f7..da47cbd 100644
+index 5c155cb..8c643b2 100644
 --- a/kernel/build/config-arm64
 +++ b/kernel/build/config-arm64
 @@ -1886,13 +1886,13 @@ CONFIG_STREAM_PARSER=y
@@ -36,7 +36,7 @@ index e50b9f7..da47cbd 100644
  # CONFIG_WAN is not set
  
  #
-@@ -10676,3 +10676,14 @@ CONFIG_ARCH_USE_MEMTEST=y
+@@ -10671,3 +10671,14 @@ CONFIG_ARCH_USE_MEMTEST=y
  # end of Kernel hacking
  
  CONFIG_IO_URING_ZCRX=y
