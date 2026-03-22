@@ -1,0 +1,26 @@
+# Talos extension service definition for wpa_supplicant
+# This file is placed at /rootfs/etc/extension-services/wpa_supplicant.yaml
+# inside the extension OCI image.
+#
+# IMPORTANT: The Talos extension service format may vary between Talos versions.
+# Validate against the current Talos docs at:
+#   https://www.talos.dev/latest/talos-guides/configuration/extension-services/
+#
+# wpa_supplicant reads its config from /etc/wpa_supplicant/wpa_supplicant.conf
+# which Talos generates from the machine config network.interfaces[].wireless section.
+name: wpa_supplicant
+container:
+  image: ""          # empty = use host rootfs overlay (binary shipped by this extension)
+  command:
+    - /usr/local/sbin/wpa_supplicant
+    - "-Dnl80211"
+    - "-c/etc/wpa_supplicant/wpa_supplicant.conf"
+    - "-iwlan0"
+    - "-B"           # run in background (managed by extension service runner)
+  env: []
+  security:
+    writeableRootfs: true
+    hostNetwork: true    # must run in host netns to access wlan0
+depends:
+  - service: network
+    event: Running
