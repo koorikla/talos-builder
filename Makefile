@@ -1,5 +1,15 @@
 PKG_VERSION = v1.12.0
 TALOS_VERSION = v1.12.6
+
+# siderolabs/pkgs and sbc-raspberrypi5 require GNU make.
+# macOS ships BSD make; use gmake if available.
+GMAKE := $(shell command -v gmake 2>/dev/null || command -v make)
+ifeq ($(shell uname),Darwin)
+  ifeq ($(shell command -v gmake 2>/dev/null),)
+    $(error GNU make (gmake) is required on macOS. Install with: brew install make)
+  endif
+  GMAKE := gmake
+endif
 SBCOVERLAY_VERSION = main
 
 REGISTRY ?= ghcr.io
@@ -84,7 +94,7 @@ patches: patches-pkgs patches-talos
 .PHONY: kernel
 kernel:
 	cd "$(CHECKOUTS_DIRECTORY)/pkgs" && \
-		$(MAKE) \
+		$(GMAKE) \
 			REGISTRY=$(REGISTRY) USERNAME=$(REGISTRY_USERNAME) PUSH=true \
 			PLATFORM=linux/arm64 \
 			kernel
@@ -98,7 +108,7 @@ kernel:
 overlay:
 	@echo SBCOVERLAY_TAG = $(SBCOVERLAY_TAG)
 	cd "$(CHECKOUTS_DIRECTORY)/sbc-raspberrypi5" && \
-		$(MAKE) \
+		$(GMAKE) \
 			REGISTRY=$(REGISTRY) USERNAME=$(REGISTRY_USERNAME) IMAGE_TAG=$(SBCOVERLAY_TAG) PUSH=true \
 			PKGS_PREFIX=$(REGISTRY)/$(REGISTRY_USERNAME) PKGS=$(PKGS_TAG) \
 			INSTALLER_ARCH=arm64 PLATFORM=linux/arm64 \
@@ -125,7 +135,7 @@ extensions:
 .PHONY: installer
 installer:
 	cd "$(CHECKOUTS_DIRECTORY)/talos" && \
-		$(MAKE) \
+		$(GMAKE) \
 			REGISTRY=$(REGISTRY) USERNAME=$(REGISTRY_USERNAME) PUSH=true \
 			PKG_KERNEL=$(REGISTRY)/$(REGISTRY_USERNAME)/kernel:$(PKGS_TAG) \
 			INSTALLER_ARCH=arm64 PLATFORM=linux/arm64 \

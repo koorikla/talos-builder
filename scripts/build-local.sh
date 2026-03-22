@@ -16,6 +16,17 @@ REGISTRY_USERNAME="koorikla/talos-builder"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# siderolabs/pkgs requires GNU make; macOS ships BSD make.
+if [[ "$(uname)" == "Darwin" ]]; then
+  if ! command -v gmake &>/dev/null; then
+    echo "ERROR: GNU make (gmake) is required on macOS. Install with: brew install make"
+    exit 1
+  fi
+  MAKE_CMD="gmake"
+else
+  MAKE_CMD="make"
+fi
+
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 check_prereqs() {
   echo "Checking prerequisites..."
@@ -51,10 +62,10 @@ build_kernel() {
   git config --global user.name "local-build" 2>/dev/null || true
   git config --global user.email "local@build" 2>/dev/null || true
 
-  [[ -d checkouts/pkgs ]] || make checkouts
-  make patches 2>/dev/null || make patches  # idempotent: ignore already-applied
+  [[ -d checkouts/pkgs ]] || ${MAKE_CMD} checkouts
+  ${MAKE_CMD} patches 2>/dev/null || ${MAKE_CMD} patches  # idempotent: ignore already-applied
 
-  make kernel \
+  ${MAKE_CMD} kernel \
     REGISTRY="${REGISTRY}" \
     REGISTRY_USERNAME="${REGISTRY_USERNAME}" \
     PUSH=true \
@@ -68,10 +79,10 @@ build_overlay() {
   echo "==> Building sbc-raspberrypi5 overlay..."
   cd "${REPO_ROOT}"
 
-  [[ -d checkouts/pkgs ]] || make checkouts
-  make patches 2>/dev/null || true
+  [[ -d checkouts/pkgs ]] || ${MAKE_CMD} checkouts
+  ${MAKE_CMD} patches 2>/dev/null || true
 
-  make overlay \
+  ${MAKE_CMD} overlay \
     REGISTRY="${REGISTRY}" \
     REGISTRY_USERNAME="${REGISTRY_USERNAME}" \
     PUSH=true \
@@ -85,7 +96,7 @@ build_extensions() {
   echo "==> Building sys-kernel-wifi extension..."
   cd "${REPO_ROOT}"
 
-  make extensions \
+  ${MAKE_CMD} extensions \
     REGISTRY="${REGISTRY}" \
     REGISTRY_USERNAME="${REGISTRY_USERNAME}"
 
@@ -97,7 +108,7 @@ build_image() {
   echo "==> Assembling metal-arm64 image..."
   cd "${REPO_ROOT}"
 
-  make image \
+  ${MAKE_CMD} image \
     REGISTRY="${REGISTRY}" \
     REGISTRY_USERNAME="${REGISTRY_USERNAME}"
 
