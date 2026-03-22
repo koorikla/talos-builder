@@ -23,6 +23,16 @@ WIFI_EXTENSION_IMAGE  = $(REGISTRY)/$(REGISTRY_USERNAME)/sys-kernel-wifi:$(TALOS
 CLOUDFLARED_IMAGE     = ghcr.io/siderolabs/cloudflared:2026.3.0
 OUT_DIR               = $(PWD)/_out
 
+# Config patches: copy config-patches/*.yaml.example → *.yaml, fill in secrets.
+# Any *.yaml found in config-patches/ is applied by gen-config and embedded by image.
+CONFIG_PATCH_DIR   = $(PWD)/config-patches
+CONFIG_PATCH_FILES = $(wildcard $(CONFIG_PATCH_DIR)/*.yaml)
+CONFIG_PATCH_ARGS  = $(foreach f,$(CONFIG_PATCH_FILES),--config-patch @$(f))
+
+# Cluster settings for gen-config (override on command line as needed)
+CLUSTER_NAME ?= rpi5
+ENDPOINT     ?= https://talos.local:6443
+
 PKG_REPOSITORY = https://github.com/siderolabs/pkgs.git
 TALOS_REPOSITORY = https://github.com/siderolabs/talos.git
 SBCOVERLAY_REPOSITORY = https://github.com/talos-rpi5/sbc-raspberrypi5.git
@@ -39,16 +49,20 @@ SBCOVERLAY_TAG = $(shell cd $(CHECKOUTS_DIRECTORY)/sbc-raspberrypi5 && git descr
 #
 .PHONY: help
 help:
-	@echo "checkouts : Clone repositories required for the build"
-	@echo "patches   : Apply all patches"
-	@echo "kernel    : Build kernel"
-	@echo "overlay   : Build Raspberry Pi 5 overlay"
-	@echo "installer : Build installer docker image and disk image"
+	@echo "checkouts  : Clone repositories required for the build"
+	@echo "patches    : Apply all patches"
+	@echo "kernel     : Build kernel"
+	@echo "overlay    : Build Raspberry Pi 5 overlay"
 	@echo "extensions : Build and push sys-kernel-wifi extension"
-	@echo "image      : Assemble metal-arm64 disk image"
+	@echo "gen-config : Generate _out/controlplane.yaml applying config-patches/*.yaml"
+	@echo "image      : Assemble metal-arm64 disk image (embeds _out/controlplane.yaml if present)"
 	@echo "all        : Run full pipeline (kernel + overlay + extensions + image)"
-	@echo "release   : Use only when building the final release, this will tag relevant images with the current Git tag."
-	@echo "clean     : Clean up any remains"
+	@echo "release    : Tag and push installer image with current Git tag"
+	@echo "clean      : Clean up checkouts and _out"
+	@echo ""
+	@echo "Config patches (copy .example → .yaml and fill in values):"
+	@echo "  config-patches/wifi.yaml         WiFi SSID + PSK"
+	@echo "  config-patches/cloudflared.yaml  Cloudflare tunnel token"
 
 
 
@@ -85,6 +99,40 @@ patches-talos:
 		git am "$(PATCHES_DIRECTORY)/siderolabs/talos/0002-WiFi-brcmfmac-modules.patch"
 
 patches: patches-pkgs patches-talos
+
+
+
+#
+# Machine config generation
+#
+# Usage:
+#   make gen-config                          # uses defaults (cluster=rpi5, endpoint=https://talos.local:6443)
+#   make gen-config CLUSTER_NAME=mycluster ENDPOINT=https://192.168.1.50:6443
+#
+# Pre-requisite: copy config-patches/*.yaml.example → *.yaml and fill in values.
+#
+.PHONY: gen-config
+gen-config:
+	@command -v talosctl >/dev/null 2>&1 || { \
+		echo "ERROR: talosctl not found."; \
+		echo "Install: brew install siderolabs/tap/talosctl"; \
+		exit 1; \
+	}
+	mkdir -p $(OUT_DIR)
+	talosctl gen config \
+		--output-types controlplane \
+		--output $(OUT_DIR)/controlplane.yaml \
+		--force \
+		$(CONFIG_PATCH_ARGS) \
+		$(CLUSTER_NAME) $(ENDPOINT)
+	@echo ""
+	@echo "==> Config written to _out/controlplane.yaml"
+	@echo "    Run 'make image' to rebuild the disk image with this config embedded."
+	@if [ -z "$(CONFIG_PATCH_FILES)" ]; then \
+		echo ""; \
+		echo "    NOTE: No config-patches/*.yaml files found — WiFi and cloudflared"; \
+		echo "    not configured. Copy the .example files and re-run gen-config."; \
+	fi
 
 
 
@@ -163,12 +211,22 @@ image:
 	AUTH_DIR=$$(mktemp -d "$$HOME/.docker-auth-XXXXXX"); \
 	trap "rm -rf $$AUTH_DIR" EXIT; \
 	printf '{"auths":{"ghcr.io":{"auth":"%s"}}}\n' "$$GHCR_AUTH" > "$$AUTH_DIR/config.json"; \
+	CONFIG_MOUNT=""; CONFIG_ARG=""; \
+	if [ -f "$(OUT_DIR)/controlplane.yaml" ]; then \
+		CONFIG_MOUNT="-v $(OUT_DIR)/controlplane.yaml:/config/controlplane.yaml:ro"; \
+		CONFIG_ARG="--embedded-config-path /config/controlplane.yaml"; \
+		echo "==> Embedding machine config from _out/controlplane.yaml"; \
+	else \
+		echo "==> No _out/controlplane.yaml found — building unconfigured image."; \
+		echo "    Run 'make gen-config' first to embed WiFi/cloudflared settings."; \
+	fi; \
 	docker run --rm \
 		--privileged \
 		-v /dev:/dev \
 		-v $(OUT_DIR):/out \
 		-e DOCKER_CONFIG=/docker-auth \
 		-v $$AUTH_DIR:/docker-auth:ro \
+		$$CONFIG_MOUNT \
 		ghcr.io/siderolabs/imager:$(TALOS_VERSION) \
 		metal \
 		--arch arm64 \
@@ -176,7 +234,8 @@ image:
 		--overlay-name rpi5 \
 		--overlay-image "$(REGISTRY)/$(REGISTRY_USERNAME)/sbc-raspberrypi5:$(SBCOVERLAY_TAG)" \
 		--system-extension-image "$(WIFI_EXTENSION_IMAGE)" \
-		--system-extension-image "$(CLOUDFLARED_IMAGE)"
+		--system-extension-image "$(CLOUDFLARED_IMAGE)" \
+		$$CONFIG_ARG
 
 
 
@@ -204,3 +263,4 @@ release:
 #
 .PHONY: clean
 clean: checkouts-clean
+	rm -rf $(OUT_DIR)

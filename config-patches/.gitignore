@@ -1,0 +1,5 @@
+# Ignore actual patch files (contain secrets) but track the .example templates
+*.yaml
+*.yml
+!*.yaml.example
+!*.yml.example

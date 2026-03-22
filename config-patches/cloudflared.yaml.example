@@ -1,0 +1,11 @@
+# Cloudflared tunnel configuration patch
+# Copy to cloudflared.yaml and fill in your tunnel token (this file is gitignored).
+#
+# Get your tunnel token from:
+#   Cloudflare Zero Trust dashboard → Networks → Tunnels → Create tunnel
+#   or: cloudflared tunnel token <tunnel-name>
+machine:
+  extensionServiceConfigs:
+    - name: cloudflared
+      environment:
+        - TUNNEL_TOKEN=eyJh_REPLACE_WITH_YOUR_TUNNEL_TOKEN

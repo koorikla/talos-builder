@@ -1,0 +1,18 @@
+# WiFi configuration patch
+# Copy to wifi.yaml and fill in your credentials (this file is gitignored).
+#
+# Talos will generate /etc/wpa_supplicant/wpa_supplicant.conf from this
+# and the sys-kernel-wifi extension will start wpa_supplicant on boot.
+#
+# Multiple access points are supported — list them in priority order.
+machine:
+  network:
+    interfaces:
+      - interface: wlan0
+        dhcp: true
+        wireless:
+          accessPoints:
+            - ssid: "YourNetworkSSID"
+              psk: "YourWiFiPassword"
+            # - ssid: "BackupNetwork"
+            #   psk: "BackupPassword"
