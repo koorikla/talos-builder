@@ -157,10 +157,18 @@ installer:
 .PHONY: image
 image:
 	mkdir -p $(OUT_DIR)
+	@set -e; \
+	GHCR_TOKEN=$$(gh auth token); \
+	GHCR_AUTH=$$(printf 'koorikla:%s' "$$GHCR_TOKEN" | base64 | tr -d '\n'); \
+	AUTH_DIR=$$(mktemp -d "$$HOME/.docker-auth-XXXXXX"); \
+	trap "rm -rf $$AUTH_DIR" EXIT; \
+	printf '{"auths":{"ghcr.io":{"auth":"%s"}}}\n' "$$GHCR_AUTH" > "$$AUTH_DIR/config.json"; \
 	docker run --rm \
 		--privileged \
 		-v /dev:/dev \
 		-v $(OUT_DIR):/out \
+		-e DOCKER_CONFIG=/docker-auth \
+		-v $$AUTH_DIR:/docker-auth:ro \
 		ghcr.io/siderolabs/imager:$(TALOS_VERSION) \
 		metal \
 		--arch arm64 \
