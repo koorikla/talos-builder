@@ -9,6 +9,10 @@ TAG ?= $(shell git describe --tags --exact-match)
 
 EXTENSIONS ?= ghcr.io/siderolabs/cloudflared:2026.3.0
 
+WIFI_EXTENSION_IMAGE  = $(REGISTRY)/$(REGISTRY_USERNAME)/sys-kernel-wifi:$(TALOS_VERSION)
+CLOUDFLARED_IMAGE     = ghcr.io/siderolabs/cloudflared:2026.3.0
+OUT_DIR               = $(PWD)/_out
+
 PKG_REPOSITORY = https://github.com/siderolabs/pkgs.git
 TALOS_REPOSITORY = https://github.com/siderolabs/talos.git
 SBCOVERLAY_REPOSITORY = https://github.com/talos-rpi5/sbc-raspberrypi5.git
@@ -30,6 +34,9 @@ help:
 	@echo "kernel    : Build kernel"
 	@echo "overlay   : Build Raspberry Pi 5 overlay"
 	@echo "installer : Build installer docker image and disk image"
+	@echo "extensions : Build and push sys-kernel-wifi extension"
+	@echo "image      : Assemble metal-arm64 disk image"
+	@echo "all        : Run full pipeline (kernel + overlay + extensions + image)"
 	@echo "release   : Use only when building the final release, this will tag relevant images with the current Git tag."
 	@echo "clean     : Clean up any remains"
 
@@ -100,6 +107,19 @@ overlay:
 
 
 #
+# Extensions
+#
+.PHONY: extensions
+extensions:
+	docker buildx build \
+		--platform linux/arm64 \
+		--push \
+		--tag $(WIFI_EXTENSION_IMAGE) \
+		extensions/sys-kernel-wifi/
+
+
+
+#
 # Installer/Image
 #
 .PHONY: installer
@@ -118,6 +138,35 @@ installer:
 			--overlay-name="rpi5" \
 			--overlay-image="$(REGISTRY)/$(REGISTRY_USERNAME)/sbc-raspberrypi5:$(SBCOVERLAY_TAG)" \
 			--system-extension-image="$(EXTENSIONS)"
+
+
+
+#
+# Image (metal ARM64 raw disk image)
+#
+.PHONY: image
+image:
+	mkdir -p $(OUT_DIR)
+	docker run --rm \
+		--privileged \
+		-v /dev:/dev \
+		-v $(OUT_DIR):/out \
+		ghcr.io/siderolabs/imager:$(TALOS_VERSION) \
+		metal \
+		--arch arm64 \
+		--base-installer-image "$(REGISTRY)/$(REGISTRY_USERNAME)/kernel:$(PKGS_TAG)" \
+		--overlay-name rpi5 \
+		--overlay-image "$(REGISTRY)/$(REGISTRY_USERNAME)/sbc-raspberrypi5:$(SBCOVERLAY_TAG)" \
+		--system-extension-image "$(WIFI_EXTENSION_IMAGE)" \
+		--system-extension-image "$(CLOUDFLARED_IMAGE)"
+
+
+
+#
+# Full pipeline
+#
+.PHONY: all
+all: kernel overlay extensions image
 
 
 
