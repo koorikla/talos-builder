@@ -1,13 +1,13 @@
-PKG_VERSION = v1.11.0
-TALOS_VERSION = v1.11.5
+PKG_VERSION = v1.12.0
+TALOS_VERSION = v1.12.6
 SBCOVERLAY_VERSION = main
 
 REGISTRY ?= ghcr.io
-REGISTRY_USERNAME ?= talos-rpi5
+REGISTRY_USERNAME ?= koorikla/talos-builder
 
 TAG ?= $(shell git describe --tags --exact-match)
 
-EXTENSIONS ?= ghcr.io/siderolabs/gvisor:20250505.0@sha256:d7503b59603f030b972ceb29e5e86979e6c889be1596e87642291fee48ce380c
+EXTENSIONS ?= ghcr.io/siderolabs/cloudflared:2026.3.0
 
 PKG_REPOSITORY = https://github.com/siderolabs/pkgs.git
 TALOS_REPOSITORY = https://github.com/siderolabs/talos.git
