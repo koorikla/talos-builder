@@ -152,7 +152,7 @@ jobs:
     needs: [build-kernel, build-overlay, build-extension]
     permissions:
       contents: write
-      packages: read
+      packages: write
 
     steps:
       - uses: actions/checkout@v4
@@ -175,10 +175,17 @@ jobs:
           SBCOVERLAY_TAG: ${{ needs.build-kernel.outputs.sbcoverlay-tag }}
         run: |
           mkdir -p _out
+          # Pass GHCR credentials into the imager container so it can pull
+          # the private kernel and sbc-raspberrypi5 packages.
+          GHCR_AUTH=$(echo -n "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64 -w 0)
+          AUTH_DIR=$(mktemp -d)
+          echo "{\"auths\":{\"ghcr.io\":{\"auth\":\"${GHCR_AUTH}\"}}}" > "${AUTH_DIR}/config.json"
           docker run --rm \
             --privileged \
             -v /dev:/dev \
             -v ${{ github.workspace }}/_out:/out \
+            -e DOCKER_CONFIG=/docker-auth \
+            -v "${AUTH_DIR}:/docker-auth:ro" \
             ghcr.io/siderolabs/imager:${{ env.TALOS_VERSION }} \
             metal \
             --arch arm64 \
@@ -192,13 +199,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: talos-rpi5-wifi-metal-arm64
-          path: _out/metal-arm64.raw.xz
+          path: _out/metal-arm64.raw.zst
           retention-days: 14
 
       - name: Upload to GitHub Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: _out/metal-arm64.raw.xz
+          files: _out/metal-arm64.raw.zst
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
