@@ -2,4 +2,4 @@
 
 | Name             | GitHub ID                           |
 |------------------|-------------------------------------|
-| Patrick Hunziker | [pndrik](https://github.com/pndrik) |
+| koorikla         | [koorikla](https://github.com/koorikla) |

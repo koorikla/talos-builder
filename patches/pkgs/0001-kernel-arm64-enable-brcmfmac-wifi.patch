@@ -1,0 +1,99 @@
+diff --git c/kernel/build/config-arm64 i/kernel/build/config-arm64
+index 3b9eb63..6c05c2f 100644
+--- c/kernel/build/config-arm64
++++ i/kernel/build/config-arm64
+@@ -1916,11 +1916,17 @@ CONFIG_STREAM_PARSER=y
+ # CONFIG_MCTP is not set
+ CONFIG_FIB_RULES=y
+ CONFIG_WIRELESS=y
+-# CONFIG_CFG80211 is not set
+-
+-#
+-# CFG80211 needs to be enabled for MAC80211
+-#
++CONFIG_CFG80211=m
++# CONFIG_NL80211_TESTMODE is not set
++# CONFIG_CFG80211_DEVELOPER_WARNINGS is not set
++# CONFIG_CFG80211_CERTIFICATION_ONUS is not set
++CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y
++CONFIG_CFG80211_USE_KERNEL_REGDB_KEYS=y
++# CONFIG_CFG80211_DEFAULT_PS is not set
++# CONFIG_CFG80211_DEBUGFS is not set
++CONFIG_CFG80211_CRDA_SUPPORT=y
++# CONFIG_CFG80211_WEXT is not set
++# CONFIG_MAC80211 is not set
+ CONFIG_MAC80211_STA_HASH_MAX_SIZE=0
+ # CONFIG_RFKILL is not set
+ # CONFIG_NET_9P is not set
+@@ -3462,7 +3468,46 @@ CONFIG_USB_VL600=m
+ CONFIG_USB_NET_CH9200=m
+ CONFIG_USB_NET_AQC111=m
+ CONFIG_USB_RTL8153_ECM=m
+-# CONFIG_WLAN is not set
++CONFIG_WLAN=y
++CONFIG_WLAN_VENDOR_ADMTEK=y
++CONFIG_WLAN_VENDOR_ATH=y
++# CONFIG_ATH_DEBUG is not set
++# CONFIG_ATH5K_PCI is not set
++# CONFIG_ATH6KL is not set
++# CONFIG_WIL6210 is not set
++CONFIG_WLAN_VENDOR_ATMEL=y
++CONFIG_WLAN_VENDOR_BROADCOM=y
++CONFIG_BRCMUTIL=m
++CONFIG_BRCMFMAC=m
++CONFIG_BRCMFMAC_PROTO_BCDC=y
++CONFIG_BRCMFMAC_SDIO=y
++# CONFIG_BRCMFMAC_USB is not set
++# CONFIG_BRCMFMAC_PCIE is not set
++# CONFIG_BRCM_TRACING is not set
++# CONFIG_BRCMDBG is not set
++CONFIG_WLAN_VENDOR_INTEL=y
++# CONFIG_IPW2100 is not set
++# CONFIG_IPW2200 is not set
++# CONFIG_IWLWIFI is not set
++CONFIG_WLAN_VENDOR_INTERSIL=y
++CONFIG_WLAN_VENDOR_MARVELL=y
++# CONFIG_LIBERTAS is not set
++# CONFIG_MWIFIEX is not set
++CONFIG_WLAN_VENDOR_MEDIATEK=y
++CONFIG_WLAN_VENDOR_MICROCHIP=y
++# CONFIG_WILC1000_SDIO is not set
++# CONFIG_WILC1000_SPI is not set
++CONFIG_WLAN_VENDOR_PURELIFI=y
++CONFIG_WLAN_VENDOR_RALINK=y
++CONFIG_WLAN_VENDOR_REALTEK=y
++CONFIG_WLAN_VENDOR_RSI=y
++CONFIG_WLAN_VENDOR_SILABS=y
++CONFIG_WLAN_VENDOR_ST=y
++CONFIG_WLAN_VENDOR_TI=y
++CONFIG_WLAN_VENDOR_ZYDAS=y
++CONFIG_WLAN_VENDOR_QUANTENNA=y
++# CONFIG_QTNFMAC_PCIE is not set
++# CONFIG_VIRT_WIFI is not set
+ # CONFIG_WAN is not set
+ 
+ #
+diff --git c/kernel/build/patches/9001-wifi-brcmfmac-report-carrier-through-ethtool-get_link.patch i/kernel/build/patches/9001-wifi-brcmfmac-report-carrier-through-ethtool-get_link.patch
+new file mode 100644
+index 0000000..6bd628d
+--- /dev/null
++++ i/kernel/build/patches/9001-wifi-brcmfmac-report-carrier-through-ethtool-get_link.patch
+@@ -0,0 +1,18 @@
++From: koorikla
++Subject: [PATCH] wifi: brcmfmac: report carrier through ethtool get_link
++
++brcmfmac only implements .get_drvinfo, so ETHTOOL_MSG_LINKSTATE_GET omits
++the link attribute and userspace that relies on it (Talos LinkStatus)
++treats an associated interface as having no carrier. Use the generic
++helper, which reports netif_carrier_ok().
++
++--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/core.c
+++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/core.c
++@@ -585,6 +585,7 @@
++ 
++ static const struct ethtool_ops brcmf_ethtool_ops = {
++ 	.get_drvinfo = brcmf_ethtool_get_drvinfo,
+++	.get_link = ethtool_op_get_link,
++ };
++ 
++ static int brcmf_netdev_stop(struct net_device *ndev)

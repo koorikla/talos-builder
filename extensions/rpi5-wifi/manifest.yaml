@@ -1,0 +1,12 @@
+version: v1alpha1
+metadata:
+  name: rpi5-wifi
+  version: "$VERSION"
+  author: koorikla
+  description: |
+    Raspberry Pi 5 onboard WiFi (Infineon CYW43455 via brcmfmac): cfg80211 and
+    brcmfmac kernel modules, firmware, wireless-regdb and a wpa_supplicant
+    extension service. Requires the matching custom kernel from koorikla/talos-builder.
+  compatibility:
+    talos:
+      version: ">= v1.14.0"

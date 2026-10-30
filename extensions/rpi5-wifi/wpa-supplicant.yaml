@@ -1,0 +1,14 @@
+name: wpa-supplicant
+container:
+  entrypoint: /usr/local/bin/wpa-supplicant-entrypoint.sh
+  # Optional: set WIFI_INTERFACE via ExtensionServiceConfig.environment to pin
+  # the interface; by default the first wireless interface is used.
+  security:
+    writeableRootfs: false
+depends:
+  # Start only once an ExtensionServiceConfig named "wpa-supplicant" provides
+  # /etc/wpa_supplicant/wpa_supplicant.conf. Deliberately no network dependency:
+  # this service is what brings the network up.
+  - configuration: true
+restart: always
+logToConsole: true

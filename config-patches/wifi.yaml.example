@@ -1,18 +1,32 @@
-# WiFi configuration patch
-# Copy to wifi.yaml and fill in your credentials (this file is gitignored).
+# WiFi credentials for the rpi5-wifi extension.
 #
-# Talos will generate /etc/wpa_supplicant/wpa_supplicant.conf from this
-# and the sys-kernel-wifi extension will start wpa_supplicant on boot.
+# Copy to wifi.yaml (gitignored) and fill in. Use it in two places:
+#   1. Embedded into the disk image, so the Pi joins WiFi on first boot:
+#        make image EMBED_CONFIG=config-patches/wifi.yaml
+#   2. As a patch for the full machine config, so WiFi survives apply-config:
+#        talosctl gen config --config-patch @config-patches/wifi.yaml ...
 #
-# Multiple access points are supported — list them in priority order.
-machine:
-  network:
-    interfaces:
-      - interface: wlan0
-        dhcp: true
-        wireless:
-          accessPoints:
-            - ssid: "YourNetworkSSID"
-              psk: "YourWiFiPassword"
-            # - ssid: "BackupNetwork"
-            #   psk: "BackupPassword"
+# The content is a plain wpa_supplicant.conf, so anything wpa_supplicant
+# supports works (multiple networks with priority, hidden SSIDs, ...).
+# Avoid quotes/backslashes in the passphrase or precompute a hex psk with
+# `wpa_passphrase <ssid> <passphrase>`.
+#
+# Talos runs DHCP on the wireless interface by default. For a static address
+# or a pinned interface name, add LinkConfig/DHCPv4Config documents as usual.
+apiVersion: v1alpha1
+kind: ExtensionServiceConfig
+name: wpa-supplicant
+configFiles:
+  - mountPath: /etc/wpa_supplicant/wpa_supplicant.conf
+    content: |
+      # ISO 3166-1 country code; required for correct 5 GHz channels.
+      country=EE
+
+      network={
+          ssid="YourNetworkSSID"
+          psk="YourWiFiPassphrase"
+      }
+# Optional: pin the interface or add wpa_supplicant flags.
+# environment:
+#   - WIFI_INTERFACE=wlan0
+#   - WPA_SUPPLICANT_ARGS=-d
