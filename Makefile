@@ -27,7 +27,7 @@ TALOS_REPOSITORY = https://github.com/siderolabs/talos.git
 PKGS_REPOSITORY = https://github.com/siderolabs/pkgs.git
 
 # pkgs revision pinned by the selected Talos release, e.g. v1.14.0-48-gf4bda77.
-PKGS_VERSION = $(shell sed -n 's/^PKGS ?= //p' "$(CHECKOUTS_DIRECTORY)/talos/Makefile")
+PKGS_VERSION = $(shell sed -n 's/^PKGS ?= //p' "$(CHECKOUTS_DIRECTORY)/talos/Makefile" 2>/dev/null)
 # Content hash of our kernel patches, so a changed patch yields a new kernel/imager tag.
 PATCHES_HASH = $(shell cat $(PATCHES_DIRECTORY)/pkgs/*.patch | sha256sum | cut -c1-8)
 

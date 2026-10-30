@@ -1,137 +1,164 @@
 # Talos Linux for Raspberry Pi 5 with WiFi
 
-Builds a Talos Linux image for the Raspberry Pi 5 that can use the onboard WiFi
-(Infineon CYW43455 over SDIO, `brcmfmac` driver).
+Talos boots the Pi 5 upstream, but it has no WiFi. This repo adds it:
 
-Upstream Talos boots the Pi 5 through the official
-[`sbc-raspberrypi`](https://github.com/siderolabs/sbc-raspberrypi) overlay
-(`rpi_5`), but its kernel has no wireless stack and Talos ships no WiFi
-firmware or supplicant. This repo adds only what is missing:
+- a Talos kernel with the Pi 5 WiFi driver (`brcmfmac`),
+- a `rpi5-wifi` system extension with firmware and `wpa_supplicant`.
 
-| Piece | Where | Why it can't come from upstream |
-| --- | --- | --- |
-| Kernel with `cfg80211` + `brcmfmac` as modules | `patches/pkgs/` applied to [siderolabs/pkgs](https://github.com/siderolabs/pkgs) | Talos enforces module signatures, and the signing key is thrown away after each kernel build. New modules mean a new kernel. |
-| `installer-base` + `imager` built against that kernel | unmodified [siderolabs/talos](https://github.com/siderolabs/talos) | The initramfs carries the kernel and its signed modules. |
-| `rpi5-wifi` system extension | `extensions/rpi5-wifi/` | Ships the WiFi modules, firmware (from Raspberry Pi OS), `regulatory.db` and a `wpa_supplicant` extension service. |
+Everything else is stock Talos with the official `rpi_5` overlay.
 
-Talos itself is not patched. The kernel gets one small fix: `brcmfmac` now
-reports carrier through ethtool. Without it, Talos considers the link down and
-never uses the WiFi address as a node address.
+> **Status:** not yet tested on hardware. Keep an Ethernet cable handy for the first boot.
 
-> **Status:** builds are automated, but this has not yet been validated on
-> hardware. Ethernet keeps working as usual, so test with a cable plugged in
-> the first time.
+## Quick start
 
-## Getting an image
+Needs Docker and `talosctl`. CI builds and publishes the images, so you only
+build the SD card image locally.
 
-CI (`.github/workflows/build.yml`, native arm64 runners) publishes:
-
-| Image | Purpose |
-| --- | --- |
-| `ghcr.io/koorikla/talos-builder/installer:<tag>` | `talosctl upgrade --image ...` |
-| `ghcr.io/koorikla/talos-builder/imager:<tag>` | builds disk images locally (below) |
-| `ghcr.io/koorikla/talos-builder/rpi5-wifi:<tag>` | the system extension |
-| workflow artifact / release asset `metal-arm64.raw.zst` | generic disk image, no WiFi credentials |
-
-`<tag>` is `<talos version>-wifi.<hash of patches/pkgs>`, e.g.
-`v1.14.5-wifi.c0f0c4cd`. `make tags` prints the exact references for the
-current checkout.
-
-### A disk image with your WiFi credentials
-
-A Pi with no Ethernet cable needs its WiFi credentials before it can be
-configured, so they are embedded into the image. Only the imager runs locally;
-under QEMU on x86 this takes a few minutes.
+### 1. Add your WiFi credentials
 
 ```sh
-cp config-patches/wifi.yaml.example config-patches/wifi.yaml   # set country, SSID, passphrase
-make checkouts                                                 # resolves the image tags
-make image EMBED_CONFIG=config-patches/wifi.yaml
-make flash DISK=/dev/sdX
+cp config-patches/wifi.yaml.example config-patches/wifi.yaml
 ```
 
-On first boot the Pi joins the network over DHCP and waits in maintenance
-mode. Find its address (router leases or HDMI console), then apply a full
-machine config **that also contains the WiFi document**. Applying a config
-replaces the embedded one, and without the WiFi document the connection drops:
+Edit `config-patches/wifi.yaml` and set your country code, SSID and passphrase:
+
+```yaml
+apiVersion: v1alpha1
+kind: ExtensionServiceConfig
+name: wpa-supplicant
+configFiles:
+  - mountPath: /etc/wpa_supplicant/wpa_supplicant.conf
+    content: |
+      country=EE
+      network={
+          ssid="MyNetwork"
+          psk="MyPassphrase"
+      }
+```
+
+The content is a regular `wpa_supplicant.conf`. `wifi.yaml` is gitignored, so
+it is never committed.
+
+### 2. Build and flash the image
 
 ```sh
+make image EMBED_CONFIG=config-patches/wifi.yaml   # -> _out/metal-arm64.raw.zst
+make flash DISK=/dev/sdX                           # double-check the device!
+```
+
+The image now contains your WiFi password. Don't share it.
+
+### 3. Boot and configure
+
+The Pi joins WiFi, gets an IP over DHCP and waits in maintenance mode. Find its
+IP in your router's DHCP leases, then:
+
+```sh
+INSTALLER=$(make -s tags | awk '/^installer:/ {print $2}')
+
 talosctl gen config my-cluster https://<pi-ip>:6443 \
   --config-patch @config-patches/wifi.yaml \
-  --install-image "$(make -s tags | awk '$1 == "installer:" {print $2}')"
+  --install-image "$INSTALLER"
+
 talosctl apply-config --insecure -n <pi-ip> -f controlplane.yaml
 ```
 
-You can also embed the full `controlplane.yaml` instead of `wifi.yaml`, and
-the Pi boots straight into the cluster.
+> Always include `--config-patch @config-patches/wifi.yaml`. The applied config
+> replaces the embedded one, and without the WiFi part the Pi goes offline.
 
-Treat an image with embedded credentials as a secret. Never upload one as a
-CI artifact.
+Bootstrap the cluster as usual (`talosctl bootstrap ...`).
 
-### Upgrades
+## WiFi config recipes
+
+All of these go in the `content:` block of `wifi.yaml`.
+
+**Several networks**: the higher `priority` is tried first.
+
+```
+network={
+    ssid="Home"
+    psk="..."
+    priority=10
+}
+network={
+    ssid="Phone-Hotspot"
+    psk="..."
+    priority=1
+}
+```
+
+**Hidden network**: add `scan_ssid=1` to the `network={...}` block.
+
+**Don't store the passphrase in plain text**: run `wpa_passphrase MyNetwork MyPassphrase`
+and use the `psk=<64 hex chars>` line it prints (no quotes).
+
+**Static IP**: add the usual Talos `LinkConfig` documents. By default Talos
+uses DHCP on the WiFi interface.
+
+**Change WiFi on a running node**: edit `wifi.yaml`, then:
+
+```sh
+talosctl patch mc -n <pi-ip> --patch @config-patches/wifi.yaml
+```
+
+The service restarts with the new settings. If the Pi moves to a network it
+can't reach you through, it disappears, so plan the switch.
+
+## Upgrading
 
 ```sh
 talosctl upgrade -n <pi-ip> --image ghcr.io/koorikla/talos-builder/installer:<tag>
 ```
 
-The installer includes the overlay and the `rpi5-wifi` extension. Don't use
-upstream Talos installers on this node: their kernel can't load these modules.
+Use only installers from this repo. Upstream Talos installers have no WiFi
+driver, so the Pi would lose its network.
 
-## Configuration
+`<tag>` looks like `v1.14.5-wifi.94f26479`. `make tags` prints the exact
+image references.
 
-WiFi is configured entirely through the `wpa-supplicant`
-[`ExtensionServiceConfig`](config-patches/wifi.yaml.example). It contains a
-plain `wpa_supplicant.conf`, so multiple networks, priorities and hidden SSIDs
-work as usual. The service:
-
-- starts only once that document exists,
-- uses the first wireless interface, unless `WIFI_INTERFACE` is set,
-- logs to `talosctl logs ext-wpa-supplicant`.
-
-Talos runs DHCP on the interface by default. Use the usual
-`LinkConfig`/`DHCPv4Config` documents for static addressing. WiFi power saving
-is off by default (`CFG80211_DEFAULT_PS=n`), because it is a common source of
-dropouts on Pi boards.
-
-Useful checks:
+## Troubleshooting
 
 ```sh
-talosctl -n <ip> service ext-wpa-supplicant
-talosctl -n <ip> logs ext-wpa-supplicant
-talosctl -n <ip> get links            # wlan0 should be up
-talosctl -n <ip> dmesg | grep -i brcmf
+talosctl -n <ip> service ext-wpa-supplicant   # is it running?
+talosctl -n <ip> logs ext-wpa-supplicant      # authentication errors show up here
+talosctl -n <ip> get links                    # wlan0 should be "up"
+talosctl -n <ip> dmesg | grep -i brcmf        # driver/firmware problems
 ```
 
-## Building everything yourself
+- **Service "waiting"**: the `wpa-supplicant` config document is missing.
+- **No `wlan0`**: the driver didn't load. Check `dmesg`.
+- **Joins WiFi but no IP**: check the DHCP server and the country code.
 
-Building the kernel needs an arm64 Linux host with Docker Buildx. Under QEMU
-it takes many hours. Push access to `REGISTRY/USERNAME` is required.
+## Building it yourself
+
+CI (`.github/workflows/build.yml`) does this on GitHub's arm64 runners. To build
+locally you need an arm64 Linux host. Under x86 emulation the kernel build
+takes hours.
 
 ```sh
-make checkouts patches   # siderolabs/talos @ TALOS_VERSION, siderolabs/pkgs @ the revision it pins
-make kernel              # the slow step (about an hour on a GitHub arm64 runner)
+make checkouts patches   # fetch Talos + pkgs sources, apply the kernel patch
+make kernel              # slow
 make talos               # installer-base + imager
 make extension
 make installer           # needs crane
 make image
 ```
 
-Override `REGISTRY`, `USERNAME` and `SOURCE_URL` to publish elsewhere.
-`EXTRA_EXTENSIONS` adds more system extensions, e.g. official ones such as
-`ghcr.io/siderolabs/cloudflared:<version>`. `EXTRA_KERNEL_ARGS` adds kernel
-arguments.
+Useful variables: `REGISTRY`, `USERNAME`, `EXTRA_EXTENSIONS` (more system
+extensions, e.g. `ghcr.io/siderolabs/cloudflared:<version>`),
+`EXTRA_KERNEL_ARGS`. To move to a new Talos release, see [UPGRADING.md](UPGRADING.md).
 
-See [UPGRADING.md](UPGRADING.md) for moving to a new Talos release.
+## How it works
 
-## Known limitations
+- `patches/pkgs/` enables `cfg80211` + `brcmfmac` in the Talos kernel. It also
+  adds a one-line driver fix so Talos sees the WiFi link as up. A new kernel is
+  required because Talos only loads modules signed by its own build.
+- Talos itself is unmodified, just rebuilt against that kernel.
+- `extensions/rpi5-wifi/` ships the WiFi modules, firmware from Raspberry Pi
+  OS, `regulatory.db`, and a `wpa_supplicant` service. The service waits for its
+  config, then runs on the first wireless interface.
 
-- Pi 5 onboard WiFi only. No other wireless drivers are enabled, and there is no `mac80211`.
-- Client mode with `wpa_supplicant` only (no AP mode). Enterprise WiFi depends on what Alpine's `wpa_supplicant` supports.
-- SecureBoot images are not built.
-- WiFi on a cluster node is less reliable than Ethernet. Use Ethernet when you can.
-
-## Prior art
-
-- [notniknot/talos-pi5-wifi](https://github.com/notniknot/talos-pi5-wifi) is a hardware-validated, much larger Talos fork with native WiFi config documents. It inspired the `brcmfmac` carrier fix.
-- [dot8development/talos-wifi](https://github.com/dot8development/talos-wifi) is the Talos WiFi fork it builds on.
-- [talos-rpi5/talos-builder](https://github.com/talos-rpi5/talos-builder) is the original Pi 5 builder this repo was forked from, from before upstream Pi 5 support existed.
+Credits: [talos-rpi5/talos-builder](https://github.com/talos-rpi5/talos-builder)
+(the original fork), [notniknot/talos-pi5-wifi](https://github.com/notniknot/talos-pi5-wifi)
+and [dot8development/talos-wifi](https://github.com/dot8development/talos-wifi)
+(prior Talos WiFi work).
