@@ -1,211 +1,114 @@
-name: Build Talos RPi5 WiFi Image
+name: Build Talos RPi5 WiFi image
 
 on:
   push:
     branches: [main]
-  release:
-    types: [published]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
-  REGISTRY_USERNAME: koorikla/talos-builder
-  TALOS_VERSION: v1.12.6
-  WIFI_EXT_IMAGE: ghcr.io/koorikla/talos-builder/sys-kernel-wifi
-  CLOUDFLARED_IMAGE: ghcr.io/siderolabs/cloudflared:2026.3.0
+  USERNAME: ${{ github.repository }}
+  SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
 
 jobs:
-  # ── Stage 1: Kernel (native ARM64 runner) ────────────────────────────────────
-  build-kernel:
-    name: Build custom WiFi kernel
+  # Kernel and Talos images are tagged with a hash of patches/pkgs, so they are
+  # rebuilt only when the patches or the Talos version change.
+  kernel:
+    name: Kernel
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 240
     permissions:
       contents: read
       packages: write
-    outputs:
-      kernel-image: ${{ steps.capture.outputs.kernel-image }}
-      pkgs-tag: ${{ steps.capture.outputs.pkgs-tag }}
-      sbcoverlay-tag: ${{ steps.capture.outputs.sbcoverlay-tag }}
-
     steps:
-      - uses: actions/checkout@v4
-
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Free disk space
+        run: sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/share/dotnet
+      - run: make checkouts patches
+      - name: Build kernel
         run: |
-          sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
-                      /usr/share/dotnet /usr/local/share/powershell
+          image=$(make -s tags | awk '$1 == "kernel:" {print $2}')
+          if docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
+            echo "$image already exists, skipping"
+          else
+            make kernel
+          fi
 
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Configure git identity
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Checkout dependencies
-        run: make checkouts
-
-      - name: Apply patches
-        run: make patches
-
-      - name: Build and push kernel
-        run: |
-          make kernel \
-            REGISTRY=ghcr.io \
-            REGISTRY_USERNAME=koorikla/talos-builder \
-            PUSH=true \
-            PLATFORM=linux/arm64
-
-      - name: Capture image references
-        id: capture
-        run: |
-          PKGS_TAG=$(cd checkouts/pkgs && git describe --tag --always --dirty --match 'v[0-9]*')
-          SBCOVERLAY_TAG=$(cd checkouts/sbc-raspberrypi5 && git describe --tag --always --dirty)-${PKGS_TAG}
-          echo "kernel-image=ghcr.io/koorikla/talos-builder/kernel:${PKGS_TAG}" >> "$GITHUB_OUTPUT"
-          echo "pkgs-tag=${PKGS_TAG}" >> "$GITHUB_OUTPUT"
-          echo "sbcoverlay-tag=${SBCOVERLAY_TAG}" >> "$GITHUB_OUTPUT"
-
-  # ── Stage 2: Overlay (native ARM64 runner) ───────────────────────────────────
-  build-overlay:
-    name: Build sbc-raspberrypi5 overlay
+  talos:
+    name: Talos installer-base + imager
+    needs: kernel
     runs-on: ubuntu-24.04-arm
-    needs: build-kernel
+    timeout-minutes: 120
     permissions:
       contents: read
       packages: write
-
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Configure git identity
+      - name: Free disk space
+        run: sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/share/dotnet
+      - run: make checkouts
+      - name: Build installer-base and imager
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          image=$(make -s tags | awk '$1 == "imager:" {print $2}')
+          if docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
+            echo "$image already exists, skipping"
+          else
+            make talos
+          fi
 
-      - name: Checkout dependencies
-        run: make checkouts
-
-      - name: Apply patches
-        run: make patches
-
-      - name: Build and push overlay
-        run: |
-          make overlay \
-            REGISTRY=ghcr.io \
-            REGISTRY_USERNAME=koorikla/talos-builder \
-            PUSH=true \
-            PLATFORM=linux/arm64
-
-  # ── Stage 3: Extension (x86 + QEMU) ─────────────────────────────────────────
-  build-extension:
-    name: Build sys-kernel-wifi extension
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push extension
-        uses: docker/build-push-action@v5
-        with:
-          context: extensions/sys-kernel-wifi
-          platforms: linux/arm64
-          push: true
-          tags: ${{ env.WIFI_EXT_IMAGE }}:${{ env.TALOS_VERSION }}
-          cache-from: type=gha,scope=wifi-ext
-          cache-to: type=gha,scope=wifi-ext,mode=max
-
-  # ── Stage 4: Image assembly ───────────────────────────────────────────────────
-  build-image:
-    name: Assemble metal image
-    runs-on: ubuntu-latest
-    needs: [build-kernel, build-overlay, build-extension]
+  image:
+    name: Extension, installer and disk image
+    needs: talos
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
     permissions:
       contents: write
       packages: write
-
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
-                      /usr/share/dotnet /usr/local/share/powershell
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: imjasonh/setup-crane@v0.7
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Assemble metal-arm64 image
-        env:
-          KERNEL_IMAGE: ${{ needs.build-kernel.outputs.kernel-image }}
-          SBCOVERLAY_TAG: ${{ needs.build-kernel.outputs.sbcoverlay-tag }}
+      - run: make checkouts
+      - run: make extension
+      - run: make installer
+      - run: make image
+      - name: Summary
         run: |
-          mkdir -p _out
-          # Pass GHCR credentials into the imager container so it can pull
-          # the private kernel and sbc-raspberrypi5 packages.
-          GHCR_AUTH=$(echo -n "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64 -w 0)
-          AUTH_DIR=$(mktemp -d)
-          echo "{\"auths\":{\"ghcr.io\":{\"auth\":\"${GHCR_AUTH}\"}}}" > "${AUTH_DIR}/config.json"
-          docker run --rm \
-            --privileged \
-            -v /dev:/dev \
-            -v ${{ github.workspace }}/_out:/out \
-            -e DOCKER_CONFIG=/docker-auth \
-            -v "${AUTH_DIR}:/docker-auth:ro" \
-            ghcr.io/siderolabs/imager:${{ env.TALOS_VERSION }} \
-            metal \
-            --arch arm64 \
-            --base-installer-image "${KERNEL_IMAGE}" \
-            --overlay-name rpi5 \
-            --overlay-image "ghcr.io/koorikla/talos-builder/sbc-raspberrypi5:${SBCOVERLAY_TAG}" \
-            --system-extension-image "${{ env.WIFI_EXT_IMAGE }}:${{ env.TALOS_VERSION }}" \
-            --system-extension-image "${{ env.CLOUDFLARED_IMAGE }}"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          {
+            echo '```'
+            make -s tags
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
         with:
-          name: talos-rpi5-wifi-metal-arm64
+          name: metal-arm64
           path: _out/metal-arm64.raw.zst
           retention-days: 14
-
-      - name: Upload to GitHub Release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v3
         with:
           files: _out/metal-arm64.raw.zst
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,47 +1,36 @@
-# Upgrading Talos
-When a new version of Talos is released it may be necessary to adjust the patches we are applying to the upstream repositories.
+# Moving to a new Talos release
 
-1. Make sure you're starting from a clean slate
-```
-make clean
-```
-2. Update the versions in the _Makefile_ with the latest tag available in siderolabs repositories.
-```
-PKG_VERSION = vX.XX.X   <-- siderolabs/pkgs
-TALOS_VERSION = vX.XX.X <-- siderolabs/talos
-```
-3. Clone all checkouts
-```
-make checkouts
-```
-4. Update patches as outlined bellow
-5. Commit and push changes
-```
-git commit -am 'Talos upgrade to vX.XX.X'
-git push
-```
-7. Create new tag
-```
-git tag vX.XX.X-rpi5
-git push origin vX.XX.X-rpi5
-```
-
-## Pkgs
-The [siderolabs/pkgs](https://github.com/siderolabs/pkgs) repository produces a set of packages which is used to build the rootfs. We are concerned about customizing the Kernel package, by using the the [raspberrypi/linux](https://github.com/raspberrypi/linux) kernel .
-
-**TBD: Will be added next time the pkgs repository is updated**
-
-## Talos
-The [siderolabs/talos](https://github.com/siderolabs/talos) repository is where packages and Talos come together. We'll need to customise the list of available kernel modules to be copied in to the initramfs.
-
-1. Try to apply the patches. If there are errors proceed to step 2, if not no further changes are needed.
-```
-make patches-pkgs
-```
-2. Manually add the required changes, commit and regenerate the patch. Essentially the _hack/modules-arm64.txt_ file needs to be overwritten with the one appropriate for the kernel build.
-```
-cd cd checkouts/talos
-cp <updated modules-arm64.txt> hack/modules-arm64.txt
-git commit -am '[PATCH] Patched for Raspberry Pi 5'
-git format-patch --output-directory "../../patches/siderolabs/talos" HEAD~1
-```
+1. Bump `TALOS_VERSION` in the `Makefile`. Check whether a newer
+   [`sbc-raspberrypi`](https://github.com/siderolabs/sbc-raspberrypi/releases)
+   release supports it, and bump `SBC_RPI_IMAGE` if so.
+2. Start from fresh checkouts. `siderolabs/pkgs` is checked out at the revision
+   the Talos release pins (`PKGS ?=` in Talos' `Makefile`).
+   ```sh
+   make clean checkouts
+   ```
+3. Apply the patches:
+   ```sh
+   make patches
+   ```
+   If `kernel/build/config-arm64` no longer applies, regenerate the config hunk.
+   Add these options to the new `config-arm64` and run `olddefconfig`. The
+   pkgs `kernel-olddefconfig` target does this in a container:
+   ```
+   CONFIG_CFG80211=m
+   # CONFIG_CFG80211_DEFAULT_PS is not set
+   CONFIG_WLAN=y
+   CONFIG_WLAN_VENDOR_BROADCOM=y
+   CONFIG_BRCMFMAC=m
+   CONFIG_BRCMFMAC_SDIO=y
+   ```
+   Stage the result in `checkouts/pkgs` and regenerate the patch:
+   ```sh
+   git -C checkouts/pkgs diff --cached > patches/pkgs/0001-kernel-arm64-enable-brcmfmac-wifi.patch
+   ```
+   The `brcmfmac` carrier patch can be dropped once upstream Linux reports
+   carrier through ethtool.
+4. Check the extension pins in `extensions/rpi5-wifi/Dockerfile`: Alpine,
+   firmware-nonfree, wireless-regdb.
+5. Commit and push to `main`. CI rebuilds the kernel and Talos images, because
+   their tags change with `TALOS_VERSION` and the patch hash.
+6. Tag a release (e.g. `v1.14.5-wifi.1`) to attach the generic disk image.
